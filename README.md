@@ -1,11 +1,11 @@
-# 🗺️ Abidjan Traffic  Analyse des Zones de Congestion Critiques
+# Abidjan Traffic  Analyse des Zones de Congestion Critiques
 
 > Cartographie spatiale et analyse du réseau routier du District d'Abidjan à partir de données ouvertes.
 
 ![Carte interactive](outputs/routes_principales_abidjan.png)
 
 ---
-
+## Lien de la carte: https://kodjo-valentin.github.io/-abidjan-traffic/
 ##  ontexte et problématique
 
 Abidjan, capitale économique de la Côte d'Ivoire et l'une des métropoles les plus dynamiques d'Afrique de l'Ouest, est confrontée à un défi urbain majeur : **la congestion routière**.
@@ -75,7 +75,7 @@ Densité routière   Hiérarchie des voies
      (Matplotlib + HTML/JS)
 ```
 
-### Indicateur clé — Densité routière
+### Indicateur clé Densité routière
 
 ```
 Densité (km/km²) = Longueur totale des routes (km)
