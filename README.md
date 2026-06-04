@@ -163,7 +163,7 @@ abidjan-traffic/
 
 ---
 
-## ▶Reproduire le projet
+## Reproduire le projet
 
 ```bash
 # 1. Cloner le dépôt
