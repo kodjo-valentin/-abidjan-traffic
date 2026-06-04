@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abidjan Traffic Zones Critiques</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --bg-deep: #030711;
+    --bg-dark: #070d1a;
+    --blue-neon: #00d4ff;
+    --blue-mid: #0066cc;
+    --blue-glow: #003d7a;
+    --cyan-bright: #00ffea;
+    --white-hot: #ffffff;
+    --orange-hot: #ff6b00;
+    --red-critical: #ff2244;
+    --text-primary: #c8e6ff;
+    --text-dim: #4a7fa5;
+    --grid-color: rgba(0, 150, 255, 0.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* GRID BACKGROUND */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* SCAN LINE */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--blue-neon), transparent);
+    animation: scanline 6s linear infinite;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  @keyframes scanline {
+    0% { top: -2px; }
+    100% { top: 100vh; }
+  }
+
+  /* HEADER */
+  #header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 64px;
+    background: linear-gradient(180deg, rgba(3,7,17,0.98) 0%, rgba(3,7,17,0.7) 100%);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 20px;
+    z-index: 500;
+    backdrop-filter: blur(10px);
+  }
+
+  #header .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--blue-neon);
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+  }
+
+  #header .logo span {
+    color: var(--cyan-bright);
+  }
+
+  #header .subtitle {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    border-left: 1px solid rgba(0,212,255,0.3);
+    padding-left: 20px;
+  }
+
+  #header .status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--cyan-bright);
+  }
+
+  .pulse-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--cyan-bright);
+    box-shadow: 0 0 8px var(--cyan-bright);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* MAP */
+  #map-wrapper {
+    position: fixed;
+    inset: 64px 0 0 0;
+    perspective: 1200px;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  #rotate-hint {
+    position: fixed;
+    left: 28px;
+    top: 84px;
+    z-index: 420;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(0, 13, 24, 0.7);
+    border: 1px solid rgba(0, 212, 255, 0.16);
+    color: var(--cyan-bright);
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 0.8px;
+    backdrop-filter: blur(14px);
+    pointer-events: none;
+    box-shadow: 0 0 24px rgba(0, 212, 255, 0.08);
+    opacity: 0.95;
+  }
+
+  #map {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+    transform-origin: center center;
+    transition: transform 0.12s ease-out;
+    will-change: transform;
+    pointer-events: auto;
+  }
+
+  /* SIDE PANEL */
+  #panel {
+    position: fixed;
+    top: 84px;
+    right: 16px;
+    width: 260px;
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card {
+    background: rgba(7, 13, 26, 0.92);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 4px;
+    padding: 14px 16px;
+    backdrop-filter: blur(12px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: linear-gradient(180deg, var(--blue-neon), var(--cyan-bright));
+  }
+
+  .card-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(0,212,255,0.05);
+  }
+
+  .stat-row:last-child { border-bottom: none; }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+
+  .stat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    color: var(--blue-neon);
+    font-weight: 700;
+  }
+
+  .stat-value.critical { color: var(--red-critical); text-shadow: 0 0 8px var(--red-critical); }
+  .stat-value.warning { color: var(--orange-hot); }
+  .stat-value.ok { color: var(--cyan-bright); }
+
+  /* LEGEND */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+    font-size: 12px;
+    color: var(--text-primary);
+  }
+
+  .legend-line {
+    width: 28px; height: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* TOOLTIP */
+  #tooltip {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    background: rgba(7,13,26,0.95);
+    border: 1px solid rgba(0,212,255,0.3);
+    border-radius: 4px;
+    padding: 12px 16px;
+    z-index: 600;
+    min-width: 220px;
+    display: none;
+    backdrop-filter: blur(12px);
+  }
+
+  #tooltip.visible { display: block; }
+
+  #tooltip .tt-type {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--blue-neon);
+    margin-bottom: 6px;
+  }
+
+  #tooltip .tt-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: white;
+    margin-bottom: 4px;
+  }
+
+  #tooltip .tt-detail {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+
+  .commune-label {
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .commune-label-text {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #d6f6ff;
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-shadow: 0 0 12px rgba(0, 220, 255, 0.8);
+    border: 1px solid rgba(0, 220, 255, 0.18);
+    white-space: nowrap;
+  }
+
+  /* CORNER DECORATIONS */
+  .corner {
+    position: fixed;
+    width: 40px; height: 40px;
+    z-index: 450;
+    opacity: 0.5;
+  }
+  .corner-tl { top: 70px; left: 8px; border-top: 1px solid var(--blue-neon); border-left: 1px solid var(--blue-neon); }
+  .corner-tr { top: 70px; right: 8px; border-top: 1px solid var(--blue-neon); border-right: 1px solid var(--blue-neon); }
+  .corner-bl { bottom: 8px; left: 8px; border-bottom: 1px solid var(--blue-neon); border-left: 1px solid var(--blue-neon); }
+  .corner-br { bottom: 8px; right: 8px; border-bottom: 1px solid var(--blue-neon); border-right: 1px solid var(--blue-neon); }
+
+  /* LEAFLET OVERRIDES */
+  .leaflet-container { background: #030711 !important; }
+  .leaflet-control-zoom {
+    border: 1px solid rgba(0,212,255,0.2) !important;
+    background: rgba(7,13,26,0.9) !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .leaflet-control-zoom a {
+    background: rgba(7,13,26,0.95) !important;
+    color: var(--blue-neon) !important;
+    border: 1px solid rgba(0,212,255,0.2) !important;
+    font-family: 'Orbitron', monospace !important;
+    width: 32px !important;
+    height: 32px !important;
+    line-height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+  }
+  .leaflet-control-zoom a:first-child {
+    border-bottom: 1px solid rgba(0,212,255,0.2) !important;
+  }
+  .leaflet-control-zoom a:hover { 
+    background: rgba(0,212,255,0.15) !important; 
+    color: var(--cyan-bright) !important;
+  }
+  .leaflet-control-attribution { display: none !important; }
+
+  /* LOADING */
+  #loading {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-deep);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    gap: 20px;
+  }
+
+  #loading .load-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    letter-spacing: 6px;
+    color: var(--blue-neon);
+    text-shadow: 0 0 30px rgba(0,212,255,0.8);
+  }
+
+  #loading .load-bar-wrap {
+    width: 280px;
+    height: 2px;
+    background: rgba(0,212,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  #loading .load-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue-neon), var(--cyan-bright));
+    animation: loadbar 2s ease forwards;
+    box-shadow: 0 0 10px var(--blue-neon);
+  }
+
+  @keyframes loadbar {
+    0% { width: 0%; }
+    100% { width: 100%; }
+  }
+
+  #loading .load-status {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading">
+  <div class="load-title">ABIDJAN TRAFFIC</div>
+  <div class="load-bar-wrap"><div class="load-bar"></div></div>
+  <div class="load-status">Chargement du réseau routier...</div>
+</div>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="logo">ABIDJAN<span>TRAFFIC</span></div>
+  <div class="subtitle">Analyse des zones critiques District d'Abidjan</div>
+  <div class="status">
+    <div class="pulse-dot"></div>
+    RÉSEAU ACTIF
+  </div>
+</div>
+
+<!-- CORNERS -->
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<!-- MAP -->
+<div id="map-wrapper">
+  <div id="map"></div>
+</div>
+<div id="rotate-hint">Shift + glissez pour pivoter 360°</div>
+
+<!-- SIDE PANEL -->
+<div id="panel">
+  <div class="card">
+    <div class="card-title">// Statistiques réseau</div>
+    <div class="stat-row">
+      <span class="stat-label">Segments routiers</span>
+      <span class="stat-value" id="stat-segments">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Axes critiques</span>
+      <span class="stat-value critical" id="stat-critical">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Axes principaux</span>
+      <span class="stat-value warning" id="stat-primary">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Axes secondaires</span>
+      <span class="stat-value ok" id="stat-secondary">—</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">// Densité par commune</div>
+    <div class="stat-row">
+      <span class="stat-label">Abidjan-Ville</span>
+      <span class="stat-value critical">1.983 km/km²</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Bingerville</span>
+      <span class="stat-value warning">0.738 km/km²</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Anyama</span>
+      <span class="stat-value ok">0.442 km/km²</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Songon</span>
+      <span class="stat-value ok">0.387 km/km²</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">// Légende des voies</div>
+    <div class="legend-item">
+      <div class="legend-line" style="background:#ff2244;box-shadow:0 0 6px #ff2244"></div>
+      Autoroute (motorway)
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background:#ff6b00;box-shadow:0 0 6px #ff6b00"></div>
+      Voie rapide (trunk)
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background:#ffaa00;box-shadow:0 0 4px #ffaa00"></div>
+      Route primaire
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background:#00d4ff;box-shadow:0 0 4px #00d4ff"></div>
+      Route secondaire
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background:#1a3a5c"></div>
+      Route tertiaire
+    </div>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <div class="tt-type" id="tt-type">TYPE DE VOIE</div>
+  <div class="tt-name" id="tt-name">—</div>
+  <div class="tt-detail" id="tt-detail">—</div>
+</div>
+
+<script>
+// ─── MAP INIT ───────────────────────────────────────────────
+const map = L.map('map', {
+  center: [5.345, -4.02],
+  zoom: 12,
+  zoomControl: true,
+  attributionControl: false,
+  preferCanvas: true
+});
+const vectorRenderer = L.canvas({ padding: 0.5, tolerance: 20 });
+
+const mapElement = map.getContainer();
+mapElement.style.cursor = 'grab';
+let tiltActive = false;
+let rotationMode = false;
+let rotateX = 0;
+let rotateY = 0;
+let dragStartX = 0;
+let dragStartY = 0;
+let startRotateX = 0;
+let startRotateY = 0;
+const mapHint = document.getElementById('rotate-hint');
+
+const updateMapTransform = () => {
+  mapElement.style.transform = `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+};
+
+const resetMapTransform = () => {
+  rotateX = 0;
+  rotateY = 0;
+  updateMapTransform();
+};
+
+mapElement.addEventListener('pointermove', (event) => {
+  if (rotationMode) {
+    const dx = (event.clientX - dragStartX) / mapElement.clientWidth;
+    const dy = (event.clientY - dragStartY) / mapElement.clientHeight;
+    rotateY = startRotateY + dx * 360;
+    rotateX = startRotateX - dy * 30;
+    rotateX = Math.max(-45, Math.min(45, rotateX));
+    updateMapTransform();
+    return;
+  }
+
+  if (tiltActive) return;
+  const rect = mapElement.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+  const y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+  const maxAngle = 14;
+  const forwardBias = 16;
+  const hoverX = -y * maxAngle + forwardBias;
+  const hoverY = x * maxAngle;
+  mapElement.style.transform = `perspective(1200px) rotateX(${hoverX}deg) rotateY(${hoverY}deg)`;
+});
+mapElement.addEventListener('pointerleave', () => {
+  if (!rotationMode) resetMapTransform();
+});
+
+mapElement.addEventListener('pointerdown', (event) => {
+  if (!event.shiftKey || event.button !== 0) return;
+  event.preventDefault();
+  rotationMode = true;
+  map.dragging.disable();
+  dragStartX = event.clientX;
+  dragStartY = event.clientY;
+  startRotateX = rotateX;
+  startRotateY = rotateY;
+  mapElement.setPointerCapture(event.pointerId);
+  mapHint.textContent = 'Glissez pour faire pivoter à 360°, Echap = réinitialiser';
+  mapElement.style.cursor = 'grabbing';
+});
+
+mapElement.addEventListener('pointerup', (event) => {
+  if (!rotationMode) return;
+  rotationMode = false;
+  map.dragging.enable();
+  mapElement.releasePointerCapture(event.pointerId);
+  mapElement.style.cursor = 'grab';
+});
+
+mapElement.addEventListener('pointercancel', () => {
+  if (!rotationMode) return;
+  rotationMode = false;
+  map.dragging.enable();
+  mapElement.style.cursor = 'grab';
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    resetMapTransform();
+    mapHint.textContent = 'Shift + glissez pour pivoter 360°';
+  }
+});
+
+map.on('dragstart zoomstart', () => {
+  tiltActive = true;
+  if (!rotationMode) resetMapTransform();
+});
+map.on('dragend zoomend', () => {
+  tiltActive = false;
+});
+
+// Fond de carte sombre
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19,
+  opacity: 0.85
+}).addTo(map);
+
+// Overlay de labels pour améliorer la lisibilité des noms de lieux
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19,
+  opacity: 0.95,
+  pane: 'overlayPane'
+}).addTo(map);
+
+// ─── COULEURS PAR TYPE ──────────────────────────────────────
+const roadConfig = {
+  'motorway':       { color: '#ff2244', weight: 3.5, glow: '#ff2244', opacity: 1.0 },
+  'motorway_link':  { color: '#ff4466', weight: 2.0, glow: '#ff2244', opacity: 0.9 },
+  'trunk':          { color: '#ff6b00', weight: 3.0, glow: '#ff6b00', opacity: 1.0 },
+  'trunk_link':     { color: '#ff8844', weight: 1.8, glow: '#ff6b00', opacity: 0.9 },
+  'primary':        { color: '#ffaa00', weight: 2.5, glow: '#ffaa00', opacity: 1.0 },
+  'primary_link':   { color: '#ffcc44', weight: 1.5, glow: '#ffaa00', opacity: 0.8 },
+  'secondary':      { color: '#00d4ff', weight: 1.8, glow: '#00d4ff', opacity: 0.85 },
+  'secondary_link': { color: '#44ddff', weight: 1.2, glow: '#00d4ff', opacity: 0.7 },
+  'tertiary':       { color: '#1a4a6e', weight: 1.0, glow: null,      opacity: 0.7 },
+};
+
+function getConfig(highway) {
+  if (Array.isArray(highway)) highway = highway[0];
+  return roadConfig[highway] || { color: '#0d2a45', weight: 0.8, glow: null, opacity: 0.5 };
+}
+
+// ─── STATS COUNTERS ─────────────────────────────────────────
+let counts = { total: 0, critical: 0, primary: 0, secondary: 0 };
+
+// ─── LOAD GEOJSON ───────────────────────────────────────────
+// Inline small sample of Abidjan major roads coordinates for animation
+// The actual roads come from the GeoJSON file
+let roadsLayer;
+
+function styleRoad(feature) {
+  const cfg = getConfig(feature.properties.highway);
+  return {
+    color: cfg.color,
+    weight: cfg.weight,
+    opacity: cfg.opacity,
+    lineJoin: 'round',
+    lineCap: 'round'
+  };
+}
+
+function onEachRoad(feature, layer) {
+  const hw = Array.isArray(feature.properties.highway) 
+    ? feature.properties.highway[0] 
+    : feature.properties.highway;
+  const cfg = getConfig(hw);
+
+  // Count stats
+  counts.total++;
+  if (['motorway','motorway_link','trunk','trunk_link'].includes(hw)) counts.critical++;
+  else if (['primary','primary_link'].includes(hw)) counts.primary++;
+  else if (['secondary','secondary_link'].includes(hw)) counts.secondary++;
+
+  // Hover interactions
+  layer.on('mouseover', function(e) {
+    layer.setStyle({ weight: cfg.weight + 2, opacity: 1 });
+    const name = feature.properties.name || 'Route sans nom';
+    const length = feature.properties.length ? 
+      (feature.properties.length > 1000 
+        ? (feature.properties.length/1000).toFixed(2) + ' km' 
+        : feature.properties.length.toFixed(0) + ' m')
+      : '—';
+    document.getElementById('tt-type').textContent = hw.toUpperCase().replace('_', ' ');
+    document.getElementById('tt-name').textContent = name;
+    document.getElementById('tt-detail').textContent = `Longueur : ${length}`;
+    document.getElementById('tooltip').classList.add('visible');
+  });
+
+  layer.on('mouseout', function() {
+    roadsLayer.resetStyle(layer);
+    document.getElementById('tooltip').classList.remove('visible');
+  });
+}
+
+// Load communes first, then roads
+fetch('./Data/Processed/communes_abidjan.geojson')
+  .then(r => r.json())
+  .then(data => {
+    L.geoJSON(data, {
+      renderer: vectorRenderer,
+      smoothFactor: 1,
+      style: {
+        color: 'rgba(0,180,255,0.25)',
+        weight: 1.5,
+        fillColor: 'rgba(0,50,120,0.08)',
+        fillOpacity: 1
+      },
+      onEachFeature: (feature, layer) => {
+        // Commune label
+        const center = layer.getBounds().getCenter();
+        L.marker(center, {
+          icon: L.divIcon({
+            className: 'commune-label',
+            html: `<div class="commune-label-text">${feature.properties.NAME_4}</div>`,
+            iconAnchor: [40, 8]
+          })
+        }).addTo(map);
+      }
+    }).addTo(map);
+  })
+  .catch(() => console.log('Communes GeoJSON not found — using map only'));
+
+fetch('./Data/Processed/routes_abidjan.geojson')
+  .then(r => r.json())
+  .then(data => {
+    roadsLayer = L.geoJSON(data, {
+      renderer: vectorRenderer,
+      smoothFactor: 1,
+      style: styleRoad,
+      onEachFeature: onEachRoad
+    }).addTo(map);
+
+    // Update stats
+    document.getElementById('stat-segments').textContent = counts.total.toLocaleString();
+    document.getElementById('stat-critical').textContent = counts.critical.toLocaleString();
+    document.getElementById('stat-primary').textContent = counts.primary.toLocaleString();
+    document.getElementById('stat-secondary').textContent = counts.secondary.toLocaleString();
+
+    // Hide loading screen
+    setTimeout(() => {
+      document.getElementById('loading').style.opacity = '0';
+      document.getElementById('loading').style.transition = 'opacity 0.8s';
+      setTimeout(() => document.getElementById('loading').style.display = 'none', 800);
+    }, 500);
+  })
+  .catch(err => {
+    console.error('Roads GeoJSON not found:', err);
+    document.getElementById('loading').querySelector('.load-status').textContent = 
+      'Erreur : routes_abidjan.geojson introuvable dans /Data/Processed/';
+  });
+
+map.on('click', () => {
+  document.getElementById('tooltip').classList.remove('visible');
+});
+</script>
+</body>
+</html>
